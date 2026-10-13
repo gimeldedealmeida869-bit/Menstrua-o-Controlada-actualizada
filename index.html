@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Luna - Controle de Ciclo Menstrual</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        rosepastel: '#FCE7F0',
+                        lilaspastel: '#F3E8FF',
+                        blush: '#F43F5E',
+                        lavender: '#A855F7',
+                        softpink: '#FFF1F2',
+                        softpurple: '#FAF5FF'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-pink-50 via-purple-50 to-rose-50 min-h-screen text-slate-700 flex flex-col justify-between" x-data="cycleApp()" x-init="init()">
+
+    <header class="bg-white/80 backdrop-blur-md sticky top-0 z-40 border-b border-pink-100 shadow-sm">
+        <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-gradient-to-tr from-rose-400 to-purple-400 text-white w-10 h-10 rounded-2xl flex items-center justify-center shadow-md shadow-rose-200">
+                    <i class="fa-solid fa-moon-sparkles text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold bg-gradient-to-r from-rose-500 to-purple-600 bg-clip-text text-transparent">Luna</h1>
+                    <p class="text-xs text-slate-400">Seu diário e ciclo em harmonia</p>
+                </div>
+            </div>
+            
+            <!-- Quick Action & Settings -->
+            <div class="flex items-center space-x-2">
+                <button @click="openSettings = true" class="w-10 h-10 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-600 flex items-center justify-center transition" title="Configurações">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 py-6 w-full flex-grow mb-16">
+        
+        <!-- Toast Notification -->
+        <div x-show="toast.show" x-transition class="fixed top-20 right-4 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center space-x-3 text-sm">
+            <i :class="toast.icon" class="text-rose-400"></i>
+            <span x-text="toast.message"></span>
+        </div>
+
+        <!-- VIEW 1: DASHBOARD -->
+        <div x-show="currentTab === 'dashboard'" x-transition:enter class="space-y-6">
+            
+            <!-- Cycle Status Card -->
+            <div class="bg-white/90 backdrop-blur border border-pink-100 rounded-3xl p-6 shadow-xl shadow-rose-100/50 relative overflow-hidden">
+                <div class="absolute -right-10 -bottom-10 w-48 h-48 bg-gradient-to-br from-rose-100/50 to-purple-100/50 rounded-full blur-2xl pointer-events-none"></div>
+                
+                <div class="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
+                    <!-- Circular Progress Indicator -->
+                    <div class="relative flex items-center justify-center">
+                        <svg class="w-44 h-44 transform -rotate-90">
+                            <circle cx="88" cy="88" r="76" stroke="currentColor" stroke-width="12" class="text-slate-100 fill-transparent"></circle>
+                            <circle cx="88" cy="88" r="76" stroke="currentColor" stroke-width="12" 
+                                    :stroke-dasharray="477" 
+                                    :stroke-dashoffset="477 - (477 * Math.min(stats.cycleDay, stats.avgCycle)) / stats.avgCycle" 
+                                    class="text-rose-500 fill-transparent transition-all duration-1000 stroke-round"></circle>
+                        </svg>
+                        <div class="absolute text-center">
+                            <span class="text-xs uppercase tracking-wider text-slate-400 font-medium">Dia do Ciclo</span>
+                            <div class="text-4xl font-extrabold text-slate-800" x-text="stats.cycleDay"></div>
+                            <span class="text-xs text-rose-500 font-semibold" x-text="'de ' + stats.avgCycle + ' dias'"></span>
+                        </div>
+                    </div>
+
+                    <!-- Phase Info -->
+                    <div class="flex-1 text-center md:text-left space-y-3">
+                        <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-semibold"
+                             :class="{
+                                'bg-rose-100 text-rose-700': stats.currentPhase === 'Menstrual',
+                                'bg-purple-100 text-purple-700': stats.currentPhase === 'Folicular',
+                                'bg-amber-100 text-amber-700': stats.currentPhase === 'Ovulação / Fértil',
+                                'bg-blue-100 text-blue-700': stats.currentPhase === 'Lútea'
+                             }">
+                            <i class="fa-solid fa-circle text-[8px]"></i>
+                            <span x-text="'Fase ' + stats.currentPhase"></span>
+                        </div>
+
+                        <h2 class="text-2xl font-bold text-slate-800" x-text="stats.phaseTitle"></h2>
+                        <p class="text-sm text-slate-500 leading-relaxed" x-text="stats.phaseDescription"></p>
+
+                        <div class="pt-2 flex flex-wrap gap-2 justify-center md:justify-start">
+                            <div class="bg-rose-50 border border-rose-100 px-3 py-2 rounded-2xl flex items-center space-x-2">
+                                <i class="fa-solid fa-calendar-days text-rose-500"></i>
+                                <div class="text-left">
+                                    <p class="text-[10px] text-slate-400 uppercase font-medium">Próxima Menstruação</p>
+                                    <p class="text-xs font-bold text-slate-700" x-text="stats.nextPeriodDateFormatted"></p>
+                                </div>
+                            </div>
+                            <div class="bg-purple-50 border border-purple-100 px-3 py-2 rounded-2xl flex items-center space-x-2">
+                                <i class="fa-solid fa-droplet text-purple-500"></i>
+                                <div class="text-left">
+                                    <p class="text-[10px] text-slate-400 uppercase font-medium">Dias Restantes</p>
+                                    <p class="text-xs font-bold text-slate-700" x-text="stats.daysUntilNext + ' dias'"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Action Buttons -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button @click="openLogModal(formatDateKey(new Date()))" class="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white p-4 rounded-2xl shadow-lg shadow-rose-200 flex items-center justify-between transition transform active:scale-98">
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-white/20 p-3 rounded-xl">
+                            <i class="fa-solid fa-pen-to-square text-xl"></i>
+                        </div>
+                        <div class="text-left">
+                            <h3 class="font-bold">Registar Sintomas Hoje</h3>
+                            <p class="text-xs text-rose-100">Como você está se sentindo?</p>
+                        </div>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-rose-200"></i>
+                </button>
+
+                <button @click="togglePeriodToday()" class="bg-white hover:bg-rose-50/50 border border-rose-200 text-slate-700 p-4 rounded-2xl shadow-sm flex items-center justify-between transition transform active:scale-98">
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-rose-100 p-3 rounded-xl text-rose-500">
+                            <i class="fa-solid fa-calendar-plus text-xl"></i>
+                        </div>
+                        <div class="text-left">
+                            <h3 class="font-bold" x-text="isPeriodToday ? 'Remover Início de Ciclo' : 'Menstruação Iniciou Hoje'"></h3>
+                            <p class="text-xs text-slate-400">Marcar o primeiro dia do ciclo</p>
+                        </div>
+                    </div>
+                    <i class="fa-solid fa-circle-check text-xl" :class="isPeriodToday ? 'text-rose-500' : 'text-slate-300'"></i>
+                </button>
+            </div>
+
+            <!-- Today's Log Summary Card if exists -->
+            <div x-show="dailyLogs[formatDateKey(new Date())]" class="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm space-y-3">
+                <div class="flex items-center justify-between">
+                    <h3 class="font-bold text-slate-800 text-sm flex items-center space-x-2">
+                        <i class="fa-solid fa-clipboard-user text-purple-500"></i>
+                        <span>Seu Registro de Hoje</span>
+                    </h3>
+                    <button @click="openLogModal(formatDateKey(new Date()))" class="text-xs text-rose-500 font-semibold hover:underline">Editar</button>
+                </div>
+                <div class="flex flex-wrap gap-2 pt-1">
+                    <template x-for="sym in (dailyLogs[formatDateKey(new Date())]?.symptoms || [])">
+                        <span class="bg-rose-50 text-rose-600 border border-rose-100 text-xs px-2.5 py-1 rounded-full font-medium" x-text="symptomLabels[sym] || sym"></span>
+                    </template>
+                    <span class="bg-purple-50 text-purple-600 border border-purple-100 text-xs px-2.5 py-1 rounded-full font-medium" x-text="'Fluxo: ' + (flowLabels[dailyLogs[formatDateKey(new Date())]?.flow] || 'Não informado')"></span>
+                </div>
+                <p class="text-xs text-slate-500 italic" x-show="dailyLogs[formatDateKey(new Date())]?.notes" x-text="'“' + dailyLogs[formatDateKey(new Date())]?.notes + '”'"></p>
+            </div>
+
+            <!-- Tips & Insights -->
+            <div class="bg-gradient-to-r from-purple-500 to-indigo-500 rounded-3xl p-6 text-white shadow-xl shadow-purple-200 relative overflow-hidden">
+                <div class="absolute right-0 bottom-0 opacity-10 transform translate-x-4 translate-y-4">
+                    <i class="fa-solid fa-spa text-9xl"></i>
+                </div>
+                <div class="relative z-10 space-y-2">
+                    <div class="inline-block bg-white/20 text-xs px-3 py-1 rounded-full font-medium">Dica do Dia para sua fase</div>
+                    <h3 class="text-lg font-bold" x-text="stats.phaseTipTitle"></h3>
+                    <p class="text-sm text-purple-100 leading-relaxed max-w-xl" x-text="stats.phaseTipBody"></p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- VIEW 2: CALENDAR -->
+        <div x-show="currentTab === 'calendar'" x-transition:enter class="space-y-6">
+            <div class="bg-white border border-pink-100 rounded-3xl p-6 shadow-sm space-y-6">
+                <!-- Month Navigation -->
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-bold text-slate-800 capitalize" x-text="monthNames[calendarMonth] + ' ' + calendarYear"></h2>
+                    <div class="flex items-center space-x-2">
+                        <button @click="changeMonth(-1)" class="w-9 h-9 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 flex items-center justify-center transition">
+                            <i class="fa-solid fa-chevron-left"></i>
+                        </button>
+                        <button @click="goToCurrentMonth()" class="px-3 py-1.5 text-xs font-semibold rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-600 transition">Hoje</button>
+                        <button @click="changeMonth(1)" class="w-9 h-9 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 flex items-center justify-center transition">
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Days of Week Header -->
+                <div class="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-400 pb-2 border-b border-slate-100">
+                    <div>Dom</div><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div>
+                </div>
+
+                <!-- Calendar Grid -->
+                <div class="grid grid-cols-7 gap-2">
+                    <template x-for="day in calendarDays">
+                        <div class="aspect-square flex flex-col items-center justify-center relative p-1">
+                            <div x-show="day.dateStr" @click="openLogModal(day.dateStr)" 
+                                 class="w-full h-full rounded-2xl flex flex-col items-center justify-center cursor-pointer transition select-none relative group"
+                                 :class="{
+                                    'bg-rose-500 text-white font-bold shadow-md shadow-rose-200': day.isPeriod,
+                                    'bg-amber-100 text-amber-800 font-semibold border border-amber-300': day.isOvulation && !day.isPeriod,
+                                    'bg-purple-100/70 text-purple-800': day.isFertile && !day.isOvulation && !day.isPeriod,
+                                    'bg-slate-50 hover:bg-slate-100 text-slate-700': !day.isPeriod && !day.isFertile && !day.isOvulation,
+                                    'ring-2 ring-rose-400': day.isToday
+                                 }">
+                                <span class="text-sm" x-text="day.dayNumber"></span>
+                                
+                                <!-- Indicator Dots for logs -->
+                                <div class="absolute bottom-1 flex space-x-0.5">
+                                    <template x-if="dailyLogs[day.dateStr]">
+                                        <span class="w-1 h-1 rounded-full bg-rose-400" :class="day.isPeriod ? 'bg-white' : ''"></span>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Legend -->
+                <div class="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-center gap-4 text-xs text-slate-500">
+                    <div class="flex items-center space-x-1.5"><span class="w-3 h-3 rounded-lg bg-rose-500 inline-block"></span><span>Menstruação</span></div>
+                    <div class="flex items-center space-x-1.5"><span class="w-3 h-3 rounded-lg bg-purple-200 inline-block"></span><span>Período Fértil</span></div>
+                    <div class="flex items-center space-x-1.5"><span class="w-3 h-3 rounded-lg bg-amber-200 inline-block"></span><span>Ovulação</span></div>
+                    <div class="flex items-center space-x-1.5"><span class="w-3 h-3 rounded-lg border-2 border-rose-400 inline-block"></span><span>Hoje</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW 3: HISTORY & STATS -->
+        <div x-show="currentTab === 'history'" x-transition:enter class="space-y-6">
+            <!-- Averages Card -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="bg-white border border-pink-100 rounded-3xl p-5 shadow-sm flex items-center space-x-4">
+                    <div class="w-12 h-12 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center text-xl font-bold">
+                        <i class="fa-solid fa-arrows-spin"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-400 font-medium uppercase">Média do Ciclo</p>
+                        <h3 class="text-xl font-bold text-slate-800"><span x-text="stats.avgCycle"></span> dias</h3>
+                    </div>
+                </div>
+                <div class="bg-white border border-purple-100 rounded-3xl p-5 shadow-sm flex items-center space-x-4">
+                    <div class="w-12 h-12 rounded-2xl bg-purple-50 text-purple-500 flex items-center justify-center text-xl font-bold">
+                        <i class="fa-solid fa-droplet"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-400 font-medium uppercase">Média da Menstruação</p>
+                        <h3 class="text-xl font-bold text-slate-800"><span x-text="settings.periodLength"></span> dias</h3>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart Card -->
+            <div class="bg-white border border-pink-100 rounded-3xl p-6 shadow-sm space-y-4">
+                <h3 class="font-bold text-slate-800">Variação dos Últimos Ciclos</h3>
+                <div class="h-64 relative">
+                    <canvas id="cycleChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Past Cycles List -->
+            <div class="bg-white border border-pink-100 rounded-3xl p-6 shadow-sm space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="font-bold text-slate-800">Ciclos Registrados</h3>
+                    <button @click="openAddCycleModal = true" class="text-xs bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold px-3 py-1.5 rounded-xl transition">
+                        <i class="fa-solid fa-plus mr-1"></i> Adicionar Ciclo
+                    </button>
+                </div>
+                
+                <div class="space-y-3">
+                    <template x-for="(cycle, index) in cycles" :key="index">
+                        <div class="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center text-sm font-bold">
+                                    <i class="fa-solid fa-calendar"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-bold text-slate-700" x-text="formatDateDisplay(cycle.startDate) + (cycle.endDate ? ' - ' + formatDateDisplay(cycle.endDate) : '')"></p>
+                                    <p class="text-xs text-slate-400" x-text="cycle.duration ? cycle.duration + ' dias de duração' : 'Ciclo atual'"></p>
+                                </div>
+                            </div>
+                            <button @click="deleteCycle(index)" class="text-slate-400 hover:text-rose-500 transition p-2">
+                                <i class="fa-solid fa-trash-can text-sm"></i>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- DAILY LOG MODAL -->
+    <div x-show="logModalOpen" class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" x-transition>
+        <div class="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar" @click.away="logModalOpen = false">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="font-bold text-slate-800 text-lg flex items-center space-x-2">
+                    <i class="fa-solid fa-pen-nib text-rose-500"></i>
+                    <span x-text="'Registro para ' + formatDateDisplay(selectedDate)"></span>
+                </h3>
+                <button @click="logModalOpen = false" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Flow Selection -->
+            <div class="space-y-2">
+                <label class="text-xs font-semibold uppercase text-slate-400 tracking-wider">Fluxo Menstrual</label>
+                <div class="grid grid-cols-5 gap-2">
+                    <template x-for="(label, key) in flowLabels">
+                        <button type="button" @click="tempLog.flow = (tempLog.flow === key ? '' : key)"
+                                class="py-2.5 px-1 rounded-2xl border text-xs font-medium transition flex flex-col items-center justify-center space-y-1"
+                                :class="tempLog.flow === key ? 'bg-rose-500 border-rose-500 text-white shadow-md shadow-rose-200' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'">
+                            <i class="fa-solid fa-droplet" :class="key === 'heavy' ? 'text-lg' : key === 'medium' ? 'text-base' : 'text-sm'"></i>
+                            <span class="truncate w-full text-center" x-text="label"></span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Symptoms Selection -->
+            <div class="space-y-2">
+                <label class="text-xs font-semibold uppercase text-slate-400 tracking-wider">Sintomas e Humor</label>
+                <div class="flex flex-wrap gap-2">
+                    <template x-for="(label, key) in symptomLabels">
+                        <button type="button" @click="toggleTempSymptom(key)"
+                                class="py-2 px-3 rounded-xl border text-xs font-medium transition flex items-center space-x-1.5"
+                                :class="tempLog.symptoms.includes(key) ? 'bg-purple-600 border-purple-600 text-white shadow-md shadow-purple-200' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'">
+                            <span x-text="label"></span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Notes -->
+            <div class="space-y-2">
+                <label class="text-xs font-semibold uppercase text-slate-400 tracking-wider">Notas Diárias</label>
+                <textarea x-model="tempLog.notes" rows="3" placeholder="Escreva algo sobre o seu dia..." class="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"></textarea>
+            </div>
+
+            <!-- Save Button -->
+            <div class="pt-2 flex space-x-3">
+                <button @click="logModalOpen = false" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-3 rounded-2xl transition text-sm">Cancelar</button>
+                <button @click="saveDailyLog()" class="flex-1 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-semibold py-3 rounded-2xl shadow-lg shadow-rose-200 transition text-sm">Salvar Registro</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div x-show="openSettings" class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4" x-transition>
+        <div class="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-6" @click.away="openSettings = false">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="font-bold text-slate-800 text-lg flex items-center space-x-2">
+                    <i class="fa-solid fa-gear text-purple-500"></i>
+                    <span>Configurações do Ciclo</span>
+                </h3>
+                <button @click="openSettings = false" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs font-semibold uppercase text-slate-400 tracking-wider">Duração média do ciclo (dias)</label>
+                    <input type="number" x-model.number="settings.avgCycle" min="20" max="45" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+                </div>
+                <div>
+                    <label class="text-xs font-semibold uppercase text-slate-400 tracking-wider">Duração média da menstruação (dias)</label>
+                    <input type="number" x-model.number="settings.periodLength" min="2" max="10" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+                </div>
+            </div>
+
+            <div class="flex space-x-3 pt-2">
+                <button @click="openSettings = false" class="w-full bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white font-semibold py-3 rounded-2xl shadow-lg shadow-purple-200 transition text-sm">Salvar Alterações</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADD PAST CYCLE MODAL -->
+    <div x-show="openAddCycleModal" class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4" x-transition>
+        <div class="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-6" @click.away="openAddCycleModal = false">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="font-bold text-slate-800 text-lg flex items-center space-x-2">
+                    <i class="fa-solid fa-calendar-plus text-rose-500"></i>
+                    <span>Adicionar Ciclo Anterior</span>
+                </h3>
+                <button @click="openAddCycleModal = false" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs font-semibold uppercase text-slate-400 tracking-wider">Data de Início</label>
+                    <input type="date" x-model="newCycleInput.startDate" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
+                </div>
+                <div>
+                    <label class="text-xs font-semibold uppercase text-slate-400 tracking-wider">Data de Término (Opcional)</label>
+                    <input type="date" x-model="newCycleInput.endDate" class="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400">
+                </div>
+            </div>
+
+            <div class="flex space-x-3 pt-2">
+                <button @click="openAddCycleModal = false" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-3 rounded-2xl transition text-sm">Cancelar</button>
+                <button @click="addNewCycle()" class="flex-1 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-semibold py-3 rounded-2xl shadow-lg shadow-rose-200 transition text-sm">Adicionar</button>
+            </div>
+        </div>
+    </div>
+
+    <nav class="bg-white/90 backdrop-blur-md fixed bottom-0 left-0 right-0 border-t border-pink-100 shadow-lg z-40">
+        <div class="max-w-md mx-auto px-6 py-2 flex justify-between items-center">
+            <button @click="currentTab = 'dashboard'" class="flex flex-col items-center space-y-1 py-1 px-3 rounded-2xl transition" :class="currentTab === 'dashboard' ? 'text-rose-500 font-bold bg-rose-50/80' : 'text-slate-400 hover:text-slate-600'">
+                <i class="fa-solid fa-house-chimney text-lg"></i>
+                <span class="text-[10px]">Início</span>
+            </button>
+            <button @click="currentTab = 'calendar'" class="flex flex-col items-center space-y-1 py-1 px-3 rounded-2xl transition" :class="currentTab === 'calendar' ? 'text-rose-500 font-bold bg-rose-50/80' : 'text-slate-400 hover:text-slate-600'">
+                <i class="fa-solid fa-calendar-days text-lg"></i>
+                <span class="text-[10px]">Calendário</span>
+            </button>
+            <button @click="currentTab = 'history'" class="flex flex-col items-center space-y-1 py-1 px-3 rounded-2xl transition" :class="currentTab === 'history' ? 'text-rose-500 font-bold bg-rose-50/80' : 'text-slate-400 hover:text-slate-600'">
+                <i class="fa-solid fa-chart-line text-lg"></i>
+                <span class="text-[10px]">Histórico</span>
+            </button>
+        </div>
+    </nav>
+
+    <script>
+        const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+        const symptomLabels = {
+            cramps: 'Cólicas',
+            headache: 'Dor de cabeça',
+            mood: 'Alterações de humor',
+            acne: 'Acne',
+            fatigue: 'Fadiga',
+            bloating: 'Inchaço',
+            tender_breasts: 'Sensibilidade',
+            craving: 'Desejos por doces'
+        };
+        const flowLabels = {
+            spotting: 'Escape',
+            light: 'Leve',
+            medium: 'Moderado',
+            heavy: 'Intenso'
+        };
+
+        function cycleApp() {
+            return {
+                currentTab: 'dashboard',
+                openSettings: false,
+                openAddCycleModal: false,
+                logModalOpen: false,
+                selectedDate: '',
+                toast: { show: false, message: '', icon: 'fa-solid fa-circle-check' },
+                
+                settings: {
+                    avgCycle: 28,
+                    periodLength: 5
+                },
+                
+                cycles: [],
+                dailyLogs: {},
+                
+                tempLog: {
+                    flow: '',
+                    symptoms: [],
+                    notes: ''
+                },
+
+                newCycleInput: {
+                    startDate: '',
+                    endDate: ''
+                },
+
+                calendarYear: new Date().getFullYear(),
+                calendarMonth: new Date().getMonth(),
+
+                init() {
+                    this.loadData();
+                    if (this.cycles.length === 0) {
+                        // Create a default initial cycle starting 14 days ago
+                        const defaultStart = new Date();
+                        defaultStart.setDate(defaultStart.getDate() - 14);
+                        this.cycles.push({
+                            startDate: this.formatDateKey(defaultStart),
+                            endDate: ''
+                        });
+                        this.saveData();
+                    }
+                    this.$watch('settings', () => this.saveData(), { deep: true });
+                    this.$watch('cycles', () => {
+                        this.saveData();
+                        this.initChart();
+                    }, { deep: true });
+
+                    setTimeout(() => this.initChart(), 300);
+                },
+
+                showToast(msg, icon = 'fa-solid fa-circle-check') {
+                    this.toast.message = msg;
+                    this.toast.icon = icon;
+                    this.toast.show = true;
+                    setTimeout(() => { this.toast.show = false; }, 3000);
+                },
+
+                loadData() {
+                    const savedCycles = localStorage.getItem('luna_cycles');
+                    if (savedCycles) this.cycles = JSON.parse(savedCycles);
+
+                    const savedLogs = localStorage.getItem('luna_logs');
+                    if (savedLogs) this.dailyLogs = JSON.parse(savedLogs);
+
+                    const savedSettings = localStorage.getItem('luna_settings');
+                    if (savedSettings) this.settings = JSON.parse(savedSettings);
+                },
+
+                saveData() {
+                    localStorage.setItem('luna_cycles', JSON.stringify(this.cycles));
+                    localStorage.setItem('luna_logs', JSON.stringify(this.dailyLogs));
+                    localStorage.setItem('luna_settings', JSON.stringify(this.settings));
+                },
+
+                formatDateKey(date) {
+                    const d = new Date(date);
+                    let month = '' + (d.getMonth() + 1),
+                        day = '' + d.getDate(),
+                        year = d.getFullYear();
+                    if (month.length < 2) month = '0' + month;
+                    if (day.length < 2) day = '0' + day;
+                    return [year, month, day].join('-');
+                },
+
+                formatDateDisplay(dateStr) {
+                    if (!dateStr) return '';
+                    const parts = dateStr.split('-');
+                    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                },
+
+                get latestCycleStart() {
+                    if (this.cycles.length === 0) return new Date();
+                    const sorted = [...this.cycles].sort((a,b) => new Date(b.startDate) - new Date(a.startDate));
+                    return new Date(sorted[0].startDate + 'T00:00:00');
+                },
+
+                get isPeriodToday() {
+                    const todayStr = this.formatDateKey(new Date());
+                    const start = new Date(this.latestCycleStart);
+                    const end = new Date(start);
+                    end.setDate(end.getDate() + this.settings.periodLength);
+                    const today = new Date(todayStr + 'T00:00:00');
+                    return today >= start && today <= end;
+                },
+
+                togglePeriodToday() {
+                    const todayStr = this.formatDateKey(new Date());
+                    const idx = this.cycles.findIndex(c => c.startDate === todayStr);
+                    if (idx > -1) {
+                        this.cycles.splice(idx, 1);
+                        this.showToast('Início de ciclo removido para hoje', 'fa-solid fa-calendar-xmark');
+                    } else {
+                        this.cycles.push({ startDate: todayStr, endDate: '' });
+                        this.cycles.sort((a,b) => new Date(b.startDate) - new Date(a.startDate));
+                        this.showToast('Menstruação iniciada hoje!', 'fa-solid fa-calendar-check');
+                    }
+                },
+
+                get stats() {
+                    const start = this.latestCycleStart;
+                    const today = new Date();
+                    today.setHours(0,0,0,0);
+                    start.setHours(0,0,0,0);
+
+                    const diffTime = today - start;
+                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                    const cycleDay = diffDays > 0 ? ((diffDays - 1) % this.settings.avgCycle) + 1 : 1;
+
+                    let currentPhase = 'Menstrual';
+                    let phaseTitle = 'Fase Menstrual';
+                    let phaseDescription = 'Seu corpo está se renovando. Descanse e hidrate-se bem.';
+                    let phaseTipTitle = 'Autocuidado e Descanso';
+                    let phaseTipBody = 'Priorize alimentos ricos em ferro e magnésio, e permita-se desacelerar o ritmo.';
+
+                    const ovulationDay = this.settings.avgCycle - 14;
+                    const fertileStart = ovulationDay - 5;
+                    const fertileEnd = ovulationDay + 1;
+
+                    if (cycleDay <= this.settings.periodLength) {
+                        currentPhase = 'Menstrual';
+                        phaseTitle = 'Fase Menstrual';
+                        phaseDescription = 'Período de limpeza e renovação natural.';
+                        phaseTipTitle = 'Chás calmantes e aconchego';
+                        phaseTipBody = 'Chá de camomila ou gengibre podem ajudar a aliviar cólicas e relaxar a musculatura.';
+                    } else if (cycleDay < fertileStart) {
+                        currentPhase = 'Folicular';
+                        phaseTitle = 'Fase Folicular';
+                        phaseDescription = 'Seu corpo aumenta a produção de estrogênio. Energia e disposição em alta!';
+                        phaseTipTitle = 'Momento ideal para novos projetos';
+                        phaseTipBody = 'Sua clareza mental e criatividade costumam estar no pico. Aproveite para iniciar tarefas!';
+                    } else if (cycleDay >= fertileStart && cycleDay <= fertileEnd) {
+                        currentPhase = 'Ovulação / Fértil';
+                        phaseTitle = 'Janela Fértil e Ovulação';
+                        phaseDescription = 'Fase de maior fertilidade do ciclo. Você pode se sentir mais sociável e radiante.';
+                        phaseTipTitle = 'Energia social elevada';
+                        phaseTipBody = 'Ótimo momento para atividades físicas dinâmicas e interações sociais.';
+                    } else {
+                        currentPhase = 'Lútea';
+                        phaseTitle = 'Fase Lútea';
+                        phaseDescription = 'Progesterona em alta. O corpo começa a se preparar para o próximo ciclo.';
+                        phaseTipTitle = 'Atenção aos sinais do corpo';
+                        phaseTipBody = 'Pratique exercícios leves como yoga ou caminhada e mantenha uma alimentação equilibrada.';
+                    }
+
+                    const nextPeriod = new Date(start);
+                    nextPeriod.setDate(nextPeriod.getDate() + this.settings.avgCycle);
+                    
+                    // If next period passed, calculate next one based on current cycle count
+                    while (nextPeriod < today) {
+                        nextPeriod.setDate(nextPeriod.getDate() + this.settings.avgCycle);
+                    }
+
+                    const daysUntilNext = Math.ceil((nextPeriod - today) / (1000 * 60 * 60 * 24));
+
+                    return {
+                        cycleDay,
+                        avgCycle: this.settings.avgCycle,
+                        currentPhase,
+                        phaseTitle,
+                        phaseDescription,
+                        phaseTipTitle,
+                        phaseTipBody,
+                        nextPeriodDateFormatted: this.formatDateDisplay(this.formatDateKey(nextPeriod)),
+                        daysUntilNext: daysUntilNext >= 0 ? daysUntilNext : 0
+                    };
+                },
+
+                changeMonth(dir) {
+                    this.calendarMonth += dir;
+                    if (this.calendarMonth > 11) {
+                        this.calendarMonth = 0;
+                        this.calendarYear++;
+                    } else if (this.calendarMonth < 0) {
+                        this.calendarMonth = 11;
+                        this.calendarYear--;
+                    }
+                },
+
+                goToCurrentMonth() {
+                    const now = new Date();
+                    this.calendarMonth = now.getMonth();
+                    this.calendarYear = now.getFullYear();
+                },
+
+                get calendarDays() {
+                    const year = this.calendarYear;
+                    const month = this.calendarMonth;
+                    const firstDayIndex = new Date(year, month, 1).getDay();
+                    const totalDays = new Date(year, month + 1, 0).getDate();
+                    const todayStr = this.formatDateKey(new Date());
+
+                    let days = [];
+                    // Padding before 1st day
+                    for (let i = 0; i < firstDayIndex; i++) {
+                        days.push({ dayNumber: '', dateStr: null });
+                    }
+
+                    const latestStart = new Date(this.latestCycleStart);
+                    latestStart.setHours(0,0,0,0);
+                    const ovulationDayOffset = this.settings.avgCycle - 14;
+
+                    for (let d = 1; d <= totalDays; d++) {
+                        const dateObj = new Date(year, month, d);
+                        const dateStr = this.formatDateKey(dateObj);
+                        dateObj.setHours(0,0,0,0);
+
+                        // Check if this date falls in any period range (historical or predicted)
+                        let isPeriod = false;
+                        let isFertile = false;
+                        let isOvulation = false;
+
+                        // Check against all recorded cycles and predicted future cycles
+                        for (let cycle of this.cycles) {
+                            const cStart = new Date(cycle.startDate + 'T00:00:00');
+                            const pEnd = new Date(cStart);
+                            pEnd.setDate(pEnd.getDate() + this.settings.periodLength - 1);
+                            
+                            if (dateObj >= cStart && dateObj <= pEnd) {
+                                isPeriod = true;
+                            }
+
+                            const oDate = new Date(cStart);
+                            oDate.setDate(oDate.getDate() + ovulationDayOffset);
+                            const fStart = new Date(oDate);
+                            fStart.setDate(fStart.getDate() - 5);
+                            const fEnd = new Date(oDate);
+                            fEnd.setDate(fEnd.getDate() + 1);
+
+                            if (dateObj >= fStart && dateObj <= fEnd) {
+                                isFertile = true;
+                                if (dateObj.getTime() === oDate.getTime()) {
+                                    isOvulation = true;
+                                }
+                            }
+                        }
+
+                        // Also check future predicted cycle if needed
+                        let nextP = new Date(latestStart);
+                        while (nextP <= dateObj) {
+                            nextP.setDate(nextP.getDate() + this.settings.avgCycle);
+                            let pEnd = new Date(nextP);
+                            pEnd.setDate(pEnd.getDate() + this.settings.periodLength - 1);
+                            if (dateObj >= nextP && dateObj <= pEnd) isPeriod = true;
+
+                            const oDate = new Date(nextP);
+                            oDate.setDate(oDate.getDate() + ovulationDayOffset);
+                            const fStart = new Date(oDate);
+                            fStart.setDate(fStart.getDate() - 5);
+                            const fEnd = new Date(oDate);
+                            fEnd.setDate(fEnd.getDate() + 1);
+                            if (dateObj >= fStart && dateObj <= fEnd) {
+                                isFertile = true;
+                                if (dateObj.getTime() === oDate.getTime()) isOvulation = true;
+                            }
+                        }
+
+                        days.push({
+                            dayNumber: d,
+                            dateStr,
+                            isPeriod,
+                            isFertile,
+                            isOvulation,
+                            isToday: dateStr === todayStr
+                        });
+                    }
+
+                    return days;
+                },
+
+                openLogModal(dateStr) {
+                    if (!dateStr) return;
+                    this.selectedDate = dateStr;
+                    const existing = this.dailyLogs[dateStr];
+                    if (existing) {
+                        this.tempLog = {
+                            flow: existing.flow || '',
+                            symptoms: [...(existing.symptoms || [])],
+                            notes: existing.notes || ''
+                        };
+                    } else {
+                        this.tempLog = { flow: '', symptoms: [], notes: '' };
+                    }
+                    this.logModalOpen = true;
+                },
+
+                toggleTempSymptom(key) {
+                    const idx = this.tempLog.symptoms.indexOf(key);
+                    if (idx > -1) {
+                        this.tempLog.symptoms.splice(idx, 1);
+                    } else {
+                        this.tempLog.symptoms.push(key);
+                    }
+                },
+
+                saveDailyLog() {
+                    this.dailyLogs[this.selectedDate] = { ...this.tempLog };
+                    this.saveData();
+                    this.logModalOpen = false;
+                    this.showToast('Registro diário salvo com sucesso!');
+                },
+
+                addNewCycle() {
+                    if (!this.newCycleInput.startDate) return;
+                    this.cycles.push({
+                        startDate: this.newCycleInput.startDate,
+                        endDate: this.newCycleInput.endDate || ''
+                    });
+                    this.cycles.sort((a,b) => new Date(b.startDate) - new Date(a.startDate));
+                    this.newCycleInput = { startDate: '', endDate: '' };
+                    this.openAddCycleModal = false;
+                    this.showToast('Ciclo adicionado com sucesso!');
+                },
+
+                deleteCycle(index) {
+                    this.cycles.splice(index, 1);
+                    this.showToast('Ciclo removido', 'fa-solid fa-trash');
+                },
+
+                initChart() {
+                    const canvasEl = document.getElementById('cycleChart');
+                    if (!canvasEl) return;
+                    
+                    const ctx = canvasEl.getContext('2d');
+                    if (window.myCycleChart) {
+                        window.myCycleChart.destroy();
+                    }
+
+                    // Prepare data from cycles
+                    let labels = [];
+                    let data = [];
+                    
+                    const sortedAsc = [...this.cycles].sort((a,b) => new Date(a.startDate) - new Date(b.startDate));
+                    for (let i = 0; i < sortedAsc.length - 1; i++) {
+                        const d1 = new Date(sortedAsc[i].startDate);
+                        const d2 = new Date(sortedAsc[i+1].startDate);
+                        const diffDays = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+                        labels.push(`Ciclo ${i+1}`);
+                        data.push(diffDays);
+                    }
+
+                    if (data.length === 0) {
+                        labels = ['Ciclo Atual', 'Média'];
+                        data = [this.settings.avgCycle, this.settings.avgCycle];
+                    }
+
+                    window.myCycleChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'Duração (dias)',
+                                data: data,
+                                borderColor: '#F43F5E',
+                                backgroundColor: 'rgba(244, 63, 94, 0.1)',
+                                borderWidth: 3,
+                                fill: true,
+                                tension: 0.3,
+                                pointBackgroundColor: '#A855F7',
+                                pointRadius: 5
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: false,
+                                    min: 20,
+                                    max: 45,
+                                    grid: { color: '#f1f5f9' }
+                                },
+                                x: {
+                                    grid: { display: false }
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
